@@ -1,0 +1,17 @@
+{
+  "name": "tsdoodle",
+  "version": "1.0.0",
+  "description": "Rapid prototyping w/ TypeScript",
+  "main": "index.js",
+  "scripts": {
+    "start": "parcel --open index.html"
+  },
+  "author": "Jamie Wong (@jlfwong)",
+  "license": "MIT",
+  "dependencies": {
+    "parcel-bundler": "1.6.2"
+  },
+  "devDependencies": {
+    "typescript": "^2.7.2"
+  }
+}
