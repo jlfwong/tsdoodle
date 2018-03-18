@@ -23,7 +23,7 @@ function fnToPath(
   line
     .x(d => xScale(d))
     .y(d => yScale(f(d)))
-    .curve(d3.curveBasis)
+    .curve(d3.curveCardinal)
 
   return line(d3.range(range.min, range.max, (range.max - range.min) / 100))
 }
@@ -82,7 +82,7 @@ async function ybarPlot() {
   line
     .x(d => xScale(d[0]))
     .y(d => yScale(d[1]))
-    .curve(d3.curveBasis)
+    .curve(d3.curveCardinal)
 
   const path = line(data as [number, number][])
 
@@ -101,6 +101,59 @@ async function ybarPlot() {
     .attr("transform", "translate(50, 0)").call(yAxis);
 }
 
+function linear2sRGB(c: number): number {
+  if (c < 0.0031308) return 12.92 * c
+  return 1.055 * Math.pow(c, 1/2.4) - 0.055
+}
+
+function clamp(min: number, max: number, val: number) {
+  if (val < min) return min
+  if (val > max) return max
+  return val
+}
+
+function XYZ2sRGB({ X, Y, Z }: { X: number, Y: number, Z: number }): string {
+  let R = clamp(0, 1, linear2sRGB( 3.2406 * X + -1.5372 * Y + -0.4986 * Z)) * 255;
+  let G = clamp(0, 1, linear2sRGB(-0.9689 * X +  1.8758 * Y +  0.0415 * Z)) * 255;
+  let B = clamp(0, 1, linear2sRGB( 0.0557 * X + -0.2040 * Y +  1.0570 * Z)) * 255;
+  return `rgb(${R.toFixed()}, ${G.toFixed()}, ${B.toFixed()}`
+}
+
+async function rainbow() {
+  const rawCsv = await d3.text(require('./ciexyz31.csv'))
+  const data = d3.csvParseRows(rawCsv).map(d => ({
+    wavelength: parseFloat(d[0]),
+    X: parseFloat(d[1]),
+    Y: parseFloat(d[2]),
+    Z: parseFloat(d[3]),
+  })).map((d): [number, string] => [d.wavelength, XYZ2sRGB(d)])
+
+  const defs = svg.append("defs")
+
+  const gradient = defs
+    .append("linearGradient")
+      .attr("id", "gradient")
+      .attr("x1", "0%")
+      .attr("y1", "0%")
+      .attr("x2", "100%")
+      .attr("y2", "0%")
+      .attr("spreadMethod", "pad");
+
+  for (let [wavelength, color] of data) {
+    const offset = (wavelength - 380) / (750 - 380)
+    if (clamp(0, 1, offset) != offset) continue
+    gradient.append("stop")
+      .attr("offset", `${offset * 100}%`)
+      .attr("stop-color", color)
+      .attr("stop-opacity", 1);
+  }
+
+  svg.append("rect")
+    .attr("width", 700)
+    .attr("height", 400)
+    .style("fill", "url(#gradient)");
+}
+
 svg.attr('width', 700).attr('height', 400)
-bulbSpectral()
-// ybarPlot()
+
+rainbow()
