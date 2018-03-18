@@ -9,6 +9,8 @@
   "author": "Jamie Wong (@jlfwong)",
   "license": "MIT",
   "dependencies": {
+    "@types/d3": "^5.0.0",
+    "d3": "^5.0.0-rc.4",
     "parcel-bundler": "1.6.2"
   },
   "devDependencies": {
