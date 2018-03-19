@@ -28,7 +28,6 @@ function fnToPath(
   return line(d3.range(range.min, range.max, (range.max - range.min) / 100))
 }
 
-// Planck constant
 function bulbSpectral() {
   const h = 6.626e-34 // J s
   const k = 1.38e-23 // JK^-1
@@ -67,6 +66,7 @@ function bulbSpectral() {
   svg.append("g")
     .attr("transform", "translate(50, 0)").call(yAxis);
 }
+
 
 declare function require(path: string): any
 
@@ -158,6 +158,11 @@ function linear2sRGB(c: number): number {
   return 1.055 * Math.pow(c, 1/2.4) - 0.055
 }
 
+function sRGB2linear(c: number): number {
+  if (c <= 0.04045) return c / 12.92
+  return Math.pow((c + 0.055) / (1 + 0.055), 2.4)
+}
+
 function clamp(min: number, max: number, val: number) {
   if (val < min) return min
   if (val > max) return max
@@ -206,6 +211,232 @@ async function rainbow() {
     .style("fill", "url(#gradient)");
 }
 
+async function bulbPlots() {
+  function plotBulb(data: [number, number][], left: number, top: number) {
+    const bottom = top + 150
+    const right = left + 200
+
+    const line = d3.line<[number, number]>()
+
+    const xScale = d3.scaleLinear().domain([300, 2500]).range([left, right])
+    const yScale = d3.scaleLinear().domain([0, 0.02]).range([bottom, top])
+
+    line
+      .x(d => xScale(d[0]))
+      .y(d => yScale(d[1]))
+      .curve(d3.curveBasisClosed)
+
+    const path = line(data as [number, number][])
+
+    svg.append("path")
+      .attr("d", path)
+      .attr("fill", "#ff0000")
+
+    const xAxis = d3.axisBottom(xScale).tickFormat((x: number) => x.toFixed()).ticks(4)
+
+    svg.append("g")
+      .attr("transform", `translate(0, ${bottom})`).call(xAxis);
+  }
+
+  let incandescant = (await d3.csv(require('./NGDC Tungsten.csv'))).map((d): [number, number] => [parseFloat(d['Wavelength']), parseFloat(d['GE 200 W Clear'])]).filter(d => d[0] >= 300)
+
+  let fluorescent = (await d3.csv(require('./NGDC Fluorescent.csv'))).map((d): [number, number] => [parseFloat(d['Wavelength']), parseFloat(d['5000 K Fluorescent'])]).filter(d => d[0] >= 301)
+  fluorescent.unshift([300, 0])
+  fluorescent.unshift([301, 0])
+  fluorescent.unshift([302, 0])
+
+  let led = (await d3.csv(require('./NGDC LED.csv'))).map((d): [number, number] => [parseFloat(d['Wavelength']), parseFloat(d['OSRAM Tester White'])]).filter(d => d[0] >= 300)
+  let ybar = d3.csvParseRows(await d3.text(require('./vl1924e.csv'))).map((r): [number, number] => [parseFloat(r[0]), parseFloat(r[1]) * 0.02])
+
+  const iFlux = incandescant.reduce((sum, d) => sum + d[1], 0)
+  const fFlux = fluorescent.reduce((sum, d) => sum + d[1], 0)
+  const lFlux = led.reduce((sum, d) => sum + d[1], 0)
+
+  incandescant = incandescant.map((d): [number, number] => [d[0], d[1] / iFlux])
+  fluorescent = fluorescent.map((d): [number, number] => [d[0], d[1] / fFlux])
+  led = led.map((d): [number, number] => [d[0], d[1] / lFlux])
+
+  function mult(a: [number, number][], b: [number, number][]) {
+    const merged: [number, number][] = []
+    let ai = 0, bi = 0;
+
+    while (ai < a.length && bi < b.length) {
+      const wava = a[ai][0]
+      const wavb = b[bi][0]
+      if (wava === wavb) {
+        merged.push([wava, a[ai][1] * b[bi][1] / 0.02])
+        ai++
+        bi++
+      } else if (wava < wavb) {
+        ai++
+      } else {
+        bi++
+      }
+    }
+
+    return merged
+  }
+
+  plotBulb(incandescant, 10, 50)
+  plotBulb(fluorescent, 230, 50)
+  plotBulb(led, 450, 50)
+
+  plotBulb(ybar, 10, 50 + 20 + 150)
+  plotBulb(ybar, 230, 50 + 20 + 150)
+  plotBulb(ybar, 450, 50 + 20 + 150)
+
+  plotBulb(mult(incandescant, ybar), 10, 50 + 2 * 20 + 2 * 150)
+  plotBulb(mult(fluorescent, ybar), 230, 50 + 2 * 20 + 2 * 150)
+  plotBulb(mult(led, ybar), 450, 50 + 2 * 20 + 2 * 150)
+
+    /*
+  svg.append("g")
+    .attr("transform", "translate(50, 0)").call(yAxis);
+    */
+}
+
+function lemon() {
+  function norm(x: number, mu: number, sigma: number) {
+    return Math.exp(-Math.pow(x - mu, 2)/(2 * sigma * sigma)) / Math.sqrt(2 * Math.PI * sigma * sigma)
+  }
+
+  const min = 380
+  const max = 750
+
+  const xScale = d3.scaleLinear().domain([min, max]).range([50, 650])
+  const yScale = d3.scaleLinear().domain([0, 1]).range([350, 50])
+
+  const yellow1 = x => 40 * norm(x, 570, 20) + 100 * norm(x, 700, 200)
+
+  const fnPath = fnToPath(yellow1, xScale, yScale, { min, max })
+
+  svg.append("path")
+    .attr("d", fnPath)
+    .attr("stroke", "#ff0000")
+    .attr("stroke-width", "1.0")
+    .attr("fill", "none")
+
+  const xAxis = d3.axisBottom(xScale).tickFormat((x: number) => (x).toFixed()).ticks(10)
+  const yAxis = d3.axisLeft(yScale).tickFormat((x: number) => '').ticks(1)
+
+  svg.append("g")
+    .attr("transform", "translate(0, 350)").call(xAxis);
+  svg.append("g")
+    .attr("transform", "translate(50, 0)").call(yAxis);
+}
+
+async function screenYellow() {
+  let mba = await d3.csv(require('./Macbook Air 2011.csv'))
+
+  function mult(a: [number, number][], b: [number, number][]) {
+    const merged: [number, number][] = []
+    let ai = 0, bi = 0;
+
+    while (ai < a.length && bi < b.length) {
+      const wava = a[ai][0]
+      const wavb = b[bi][0]
+      if (wava === wavb) {
+        merged.push([wava, a[ai][1] * b[bi][1] / 0.02])
+        ai++
+        bi++
+      } else if (wava < wavb) {
+        ai++
+      } else {
+        bi++
+      }
+    }
+
+    return merged
+  }
+
+  const line = d3.line<[number, number]>()
+
+  const xScale = d3.scaleLinear().domain([380, 750]).range([50, 650])
+  const yScale = d3.scaleLinear().domain([0, 1]).range([350, 50])
+
+  const rgb = mba.map((d): { wav: number, r: number, g: number, b: number } => ({
+    wav: parseFloat(d['Wavelength']),
+    r: parseFloat(d['red-MacbookAir2011']),
+    g: parseFloat(d['green-MacbookAir2011']),
+    b: parseFloat(d['blue-MacbookAir2011'])
+  })).filter(d => d.wav >= 380 && d.wav <= 750)
+
+  // #FFE841
+  const data = rgb.map((d): [number, number] =>
+    [
+      d.wav,
+      150 * (sRGB2linear(0xFF / 0xFF) * d.r +
+             sRGB2linear(0xE8 / 0xFF) * d.g +
+             sRGB2linear(0x41 / 0xFF) * 0.2 * d.b)
+    ]
+  )
+
+  line
+    .x(d => xScale(d[0]))
+    .y(d => yScale(d[1]))
+    .curve(d3.curveBasis)
+
+  svg.append("path")
+    .attr("d", line(data))
+    .attr("stroke", "#ff0000")
+    .attr("stroke-width", "1.0")
+    .attr("fill", "none")
+
+  const xAxis = d3.axisBottom(xScale).tickFormat((x: number) => (x).toFixed()).ticks(10)
+  const yAxis = d3.axisLeft(yScale).tickFormat((x: number) => '').ticks(1)
+
+  svg.append("g")
+    .attr("transform", "translate(0, 350)").call(xAxis);
+  svg.append("g")
+    .attr("transform", "translate(50, 0)").call(yAxis);
+}
+
+async function cones() {
+  let conesRaw = d3.csvParseRows(await d3.text(require('./cones.csv')))
+
+  const xScale = d3.scaleLinear().domain([380, 750]).range([50, 650])
+  const yScale = d3.scaleLinear().domain([0, 1]).range([350, 50])
+
+  const cones = conesRaw.map((d): { wav: number, l: number, m: number, s: number } => ({
+    wav: parseFloat(d[0]),
+    l: parseFloat(d[1]),
+    m: parseFloat(d[2]),
+    s: parseFloat(d[3])
+  })).filter(d => d.wav >= 380 && d.wav <= 750)
+
+  const line = d3.line<[number, number]>()
+  line
+    .x(d => xScale(d[0]))
+    .y(d => yScale(d[1]))
+    .curve(d3.curveBasis)
+
+  svg.append("path")
+    .attr("d", line(cones.map((d): [number, number] => [d.wav, d.l])))
+    .attr("stroke", "#ff0000")
+    .attr("stroke-width", "1.0")
+    .attr("fill", "none")
+
+  svg.append("path")
+    .attr("d", line(cones.map((d): [number, number] => [d.wav, d.m])))
+    .attr("stroke", "#00ff00")
+    .attr("stroke-width", "1.0")
+    .attr("fill", "none")
+
+  svg.append("path")
+    .attr("d", line(cones.map((d): [number, number] => [d.wav, d.s])))
+    .attr("stroke", "#0000ff")
+    .attr("stroke-width", "1.0")
+    .attr("fill", "none")
+
+  const xAxis = d3.axisBottom(xScale).tickFormat((x: number) => (x).toFixed()).ticks(10)
+  const yAxis = d3.axisLeft(yScale).tickFormat((x: number) => '').ticks(1)
+
+  svg.append("g")
+    .attr("transform", "translate(0, 350)").call(xAxis);
+  svg.append("g")
+    .attr("transform", "translate(50, 0)").call(yAxis);
+}
+
 svg.attr('width', 700).attr('height', 400)
 
-bulbLuminousFlux()
+screenYellow()
