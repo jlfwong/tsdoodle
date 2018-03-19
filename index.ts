@@ -299,14 +299,13 @@ function lemon() {
   function norm(x: number, mu: number, sigma: number) {
     return Math.exp(-Math.pow(x - mu, 2)/(2 * sigma * sigma)) / Math.sqrt(2 * Math.PI * sigma * sigma)
   }
+  const yellow1 = x => 29 * norm(x, 570, 20) + 250 * norm(x, 800, 230)
 
   const min = 380
   const max = 750
 
   const xScale = d3.scaleLinear().domain([min, max]).range([50, 650])
   const yScale = d3.scaleLinear().domain([0, 1]).range([350, 50])
-
-  const yellow1 = x => 40 * norm(x, 570, 20) + 100 * norm(x, 700, 200)
 
   const fnPath = fnToPath(yellow1, xScale, yScale, { min, max })
 
@@ -367,7 +366,7 @@ async function screenYellow() {
       d.wav,
       150 * (sRGB2linear(0xFF / 0xFF) * d.r +
              sRGB2linear(0xE8 / 0xFF) * d.g +
-             sRGB2linear(0x41 / 0xFF) * 0.2 * d.b)
+             sRGB2linear(0x41 / 0xFF) * d.b)
     ]
   )
 
@@ -392,11 +391,10 @@ async function screenYellow() {
 }
 
 async function cones() {
-  let conesRaw = d3.csvParseRows(await d3.text(require('./cones.csv')))
-
   const xScale = d3.scaleLinear().domain([380, 750]).range([50, 650])
   const yScale = d3.scaleLinear().domain([0, 1]).range([350, 50])
 
+  let conesRaw = d3.csvParseRows(await d3.text(require('./cones.csv')))
   const cones = conesRaw.map((d): { wav: number, l: number, m: number, s: number } => ({
     wav: parseFloat(d[0]),
     l: parseFloat(d[1]),
@@ -437,6 +435,125 @@ async function cones() {
     .attr("transform", "translate(50, 0)").call(yAxis);
 }
 
-svg.attr('width', 700).attr('height', 400)
+async function lemonCones() {
+  function plotCone(data: [number, number][], left: number, top: number) {
+    const bottom = top + 150
+    const right = left + 200
 
-screenYellow()
+    const line = d3.line<[number, number]>()
+
+    const xScale = d3.scaleLinear().domain([380, 750]).range([left, right])
+    const yScale = d3.scaleLinear().domain([0, 1]).range([bottom, top])
+
+    line
+      .x(d => xScale(d[0]))
+      .y(d => yScale(d[1]))
+      .curve(d3.curveBasis)
+
+    const path = line(data as [number, number][])
+
+    svg.append("path")
+      .attr("d", path)
+      .attr("stroke", "#ff0000")
+      .attr("fill", "none")
+
+    const xAxis = d3.axisBottom(xScale).tickFormat((x: number) => x.toFixed()).ticks(4)
+    const yAxis = d3.axisLeft(yScale).tickFormat((x: number) => '').ticks(1)
+
+
+    svg.append("g")
+      .attr("transform", `translate(${left}, 0)`).call(yAxis);
+    svg.append("g")
+      .attr("transform", `translate(0, ${bottom})`).call(xAxis);
+  }
+
+  function mult(a: [number, number][], b: [number, number][]) {
+    const merged: [number, number][] = []
+    let ai = 0, bi = 0;
+
+    while (ai < a.length && bi < b.length) {
+      const wava = a[ai][0]
+      const wavb = b[bi][0]
+      if (wava === wavb) {
+        merged.push([wava, a[ai][1] * b[bi][1]])
+        ai++
+        bi++
+      } else if (wava < wavb) {
+        ai++
+      } else {
+        bi++
+      }
+    }
+
+    return merged
+  }
+
+  let conesRaw = d3.csvParseRows(await d3.text(require('./cones.csv')))
+  const cones = conesRaw.map((d): { wav: number, l: number, m: number, s: number } => ({
+    wav: parseFloat(d[0]),
+    l: parseFloat(d[1]),
+    m: parseFloat(d[2]),
+    s: parseFloat(d[3])
+  })).filter(d => d.wav >= 380 && d.wav <= 750)
+
+  let mba = await d3.csv(require('./Macbook Air 2011.csv'))
+  const rgb = mba.map((d): { wav: number, r: number, g: number, b: number } => ({
+    wav: parseFloat(d['Wavelength']),
+    r: parseFloat(d['red-MacbookAir2011']),
+    g: parseFloat(d['green-MacbookAir2011']),
+    b: parseFloat(d['blue-MacbookAir2011'])
+  })).filter(d => d.wav >= 380 && d.wav <= 750)
+  const yellowScreen = rgb.map((d): [number, number] =>
+    [
+      d.wav,
+      150 * (sRGB2linear(0xFF / 0xFF) * d.r +
+             sRGB2linear(0xE8 / 0xFF) * d.g +
+             sRGB2linear(0x41 / 0xFF) * d.b)
+    ]
+  )
+
+  function norm(x: number, mu: number, sigma: number) {
+    return Math.exp(-Math.pow(x - mu, 2)/(2 * sigma * sigma)) / Math.sqrt(2 * Math.PI * sigma * sigma)
+  }
+  const yellow1 = x => 29 * norm(x, 570, 20) + 250 * norm(x, 800, 230)
+
+  const yellow = d3.range(380, 750, 1).map((d): [number, number] => [d, yellow1(d)])
+  const lCone = cones.map((d): [number, number] => [d.wav, d.l])
+  const mCone = cones.map((d): [number, number] => [d.wav, d.m])
+  const sCone = cones.map((d): [number, number] => [d.wav, d.s])
+
+  const y = yellowScreen
+
+  plotCone(y, 10, 50)
+  plotCone(y, 230, 50)
+  plotCone(y, 450, 50)
+
+  plotCone(sCone, 10, 50 + 20 + 150)
+  plotCone(mCone, 230, 50 + 20 + 150)
+  plotCone(lCone, 450, 50 + 20 + 150)
+
+  const sStim = mult(y, sCone)
+  const mStim = mult(y, mCone)
+  const lStim = mult(y, lCone)
+
+  function tally(d: [number, number][]): number {
+    let x = d.filter(d => d[0] >= 380 && d[0] <= 750)
+    return x.reduce((sum, a) => isNaN(a[1]) ? sum : sum + a[1], 0) / x.length
+  }
+
+  console.log((tally(sStim) * 100).toFixed(0), (tally(mStim) * 100).toFixed(0), (tally(lStim) * 100).toFixed(0))
+
+  plotCone(sStim, 10, 50 + 2 * 20 + 2 * 150)
+  plotCone(mStim, 230, 50 + 2 * 20 + 2 * 150)
+  plotCone(lStim, 450, 50 + 2 * 20 + 2 * 150)
+
+    /*
+  svg.append("g")
+    .attr("transform", "translate(50, 0)").call(yAxis);
+    */
+}
+
+
+svg.attr('width', 700).attr('height', 700)
+
+lemonCones()
